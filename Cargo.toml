@@ -1,0 +1,32 @@
+[package]
+name = "vrmp"
+version = "0.1.0"
+edition = "2021"
+description = "A VR media player for high-resolution 180/360 video"
+license = "MIT"
+
+[dependencies]
+anyhow = "1"
+openxr = { version = "0.21", features = ["linked"] }
+glow = "0.17"
+egui = "0.36"
+egui_glow = { version = "0.36", default-features = false }
+walkdir = "2.5"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+glam = "0.33"
+x11-dl = "2.21"
+blake3 = "1.8"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif", "bmp"] }
+libc = "0.2"
+crossbeam-channel = "0.5"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 4
+
+# Debug builds still have to decode 8K video in real time, so keep dependencies
+# optimised even when our own crate is unoptimised.
+[profile.dev.package."*"]
+opt-level = 3

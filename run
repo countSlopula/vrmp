@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Start vrmp, with the checks that otherwise cost a trip into the headset.
+#
+#   ./run              play
+#   ./run scan -v      any other subcommand, passed straight through
+set -euo pipefail
+cd "$(dirname "$0")"
+
+cmd=("${@:-play}")
+
+# Only playback needs a headset; scan, covers, preview and doctor are all
+# perfectly useful without one.
+if [ "${cmd[0]}" = "play" ]; then
+    # Any OpenXR runtime will do, so look for a runtime manifest rather than a
+    # particular product. A runtime registers one while it is available and
+    # removes it on exit, so its absence is the usual reason the loader reports
+    # that it cannot find one.
+    runtime_found=false
+    if [ -n "${XR_RUNTIME_JSON:-}" ]; then
+        runtime_found=true
+    else
+        for dir in "${XDG_CONFIG_HOME:-$HOME/.config}" /etc/xdg /usr/local/etc/xdg /usr/etc/xdg; do
+            if [ -e "$dir/openxr/1/active_runtime.json" ]; then
+                runtime_found=true
+                break
+            fi
+        done
+    fi
+
+    # Convenience for runtimes that ship a manifest without registering it.
+    # Purely a fallback: the player has no dependency on any of these.
+    if [ "$runtime_found" = false ]; then
+        for rt in wivrn-server monado-service; do
+            bin=$(command -v "$rt" 2>/dev/null) || continue
+            prefix=$(dirname "$(dirname "$(readlink -f "$bin")")")
+            for manifest in "$prefix"/share/openxr/1/*.json; do
+                if [ -f "$manifest" ]; then
+                    export XR_RUNTIME_JSON="$manifest"
+                    echo "note: no runtime registered; using $manifest"
+                    runtime_found=true
+                    break 2
+                fi
+            done
+        done
+    fi
+
+    if [ "$runtime_found" = false ]; then
+        echo "no OpenXR runtime found." >&2
+        echo "Start one (WiVRn, Monado, Envision, …) and connect the headset," >&2
+        echo "or set XR_RUNTIME_JSON to its manifest. './run doctor' reports" >&2
+        echo "what the loader can see." >&2
+        exit 1
+    fi
+fi
+
+# Build only when the binary is missing; rebuilding every launch would add a
+# pause before something that is meant to start straight away.
+if [ ! -x target/release/vrmp ]; then
+    echo "building…"
+    nix develop --command cargo build --release
+fi
+
+exec nix develop --command ./target/release/vrmp "${cmd[@]}"
